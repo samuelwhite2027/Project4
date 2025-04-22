@@ -56,10 +56,29 @@ max_batt_energy_per_meter = edl_system['rover']['power_subsys']['battery']['capa
 # search bounds
 #x_lb = np.array([14, 0.2, 250, 0.05, 100])
 #x_ub = np.array([19, 0.7, 800, 0.12, 290])
-bounds = Bounds([14, 0.2, 250, 0.05, 100], [19, 0.7, 800, 0.12, 290])
+bounds = [
+    (14, 19),        # parachute
+    (100, 290),      # fuel
+    (0.2, 0.7),      # wheel radius
+    (0.05, 0.12),    # gear diameter
+    (250, 799),      # chassis mass (cap it)
+    (0, 5),          # motor index
+    (0, 5),          # battery index
+    (6, 9)           # battery modules
+]
 
 # initial guess
-x0 = np.array([19, .7, 550.0, 0.09, 250.0]) 
+x0 = [
+    18.5,   # parachute_d
+    290.0,  # fuel_mass
+    0.45,   # wheel_radius
+    0.08,   # gear_diameter
+    275.0,  # ↓ chassis_mass
+    3,      # motor_type = torque_he
+    1,      # battery_type = NiMH
+    8       # ↑ battery_modules
+]
+
 
 # lambda for the objective function
 obj_f = lambda x: obj_fun_time(x,edl_system,planet,mission_events,tmax,
@@ -153,15 +172,29 @@ c = constraints_edl_system(res.x,edl_system,planet,mission_events,tmax,experimen
                            end_event,min_strength,max_rover_velocity,max_cost,
                            max_batt_energy_per_meter)
 
-feasible = np.max(c - np.zeros(len(c))) <= 0
+labels = [
+    "Landing velocity (≥ -1 m/s)",
+    "Distance traveled (≥ 1000 m)",
+    "Chassis strength (≥ 40000)",
+    "Total cost (≤ $7.2M)",
+    "Battery energy per meter (if applicable)"
+]
+
+print("\n🔍 Feasibility Check (Post-Optimization)")
+feasible = True
+for i, val in enumerate(c):
+    status = "✅" if val >= 0 else f"❌ FAIL by {abs(val):.2f}"
+    print(f"{i+1}. {labels[i]}: {status}")
+    if val < 0:
+        feasible = False
+
 if feasible:
     xbest = res.x
     fbest = res.fun
-else:  # nonsense to let us know this did not work
-    xbest = [99999, 99999, 99999, 99999, 99999]
+else:
+    xbest = [99999] * len(res.x)
     fval = [99999]
-    raise Exception('Solution not feasible, exiting code...')
-    sys.exit()
+    raise Exception("Solution not feasible, exiting code...")
 
 # What about the design variable bounds?
 
