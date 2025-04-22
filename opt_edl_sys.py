@@ -15,14 +15,25 @@ from scipy.optimize import NonlinearConstraint
 import pickle
 import sys
 
+# the following variables are the variables that can be changed
+PARACHUTE_DIAMETER = 17  # [14, 19]
+FUEL_MASS = 200  # [100, 290]
+WHEEL_RADIUS = .5  # [.2, .7]
+GEAR_DIAMETER = .05  # [.05, .12]
+CHASSIS_MASS = 300  # [250, 800]
+CHASSIS_TYPE = 'steel'  # ['steel', 'magnesium', 'carbon']
+MOTOR_TYPE = 'speed_he'  # ['base', 'base_he', torque', 'torque_he', 'speed', 'speed_he']
+BATTERY_TYPE = 'LiFePO4'  # ['LiFePO4', 'NiMH', 'NiCD', 'Pb-Acid-1', 'Pb-Acid-2', 'Pb-Acid-3']
+NUM_MODULES = 8
+
 # the following calls instantiate the needed structs and also make some of
 # our design selections (battery type, etc.)
 planet = define_planet()
 edl_system = define_edl_system()
 mission_events = define_mission_events()
-edl_system = define_chassis(edl_system,'carbon')
-edl_system = define_motor(edl_system,'base')
-edl_system = define_batt_pack(edl_system,'PbAcid-1', 10)
+edl_system = define_chassis(edl_system,CHASSIS_TYPE)
+edl_system = define_motor(edl_system,MOTOR_TYPE)
+edl_system = define_batt_pack(edl_system,BATTERY_TYPE, NUM_MODULES)
 tmax = 5000
 
 # Overrides what might be in the loaded data to establish our desired
@@ -53,6 +64,21 @@ max_batt_energy_per_meter = edl_system['rover']['power_subsys']['battery']['capa
 #   - rocket fuel mass [kg]
 #
 
+# create code to access each of these and redefine them
+# parachute diameter
+edl_system['parachute']['diameter'] = PARACHUTE_DIAMETER
+# fuel mass
+edl_system['rocket']['fuel_mass'] = FUEL_MASS
+# wheel radius
+edl_system['rover']['wheel_assembly']['wheel']['radius'] = WHEEL_RADIUS
+# gear diameter
+edl_system['rover']['wheel_assembly']['speed_reducer']['diam_gear'] = GEAR_DIAMETER
+# chassis mass
+edl_system['rover']['chassis']['mass'] = CHASSIS_MASS
+# the
+
+# end optimization problem definition
+# ******************************
 # search bounds
 #x_lb = np.array([14, 0.2, 250, 0.05, 100])
 #x_ub = np.array([19, 0.7, 800, 0.12, 290])
@@ -149,8 +175,8 @@ res = minimize(obj_f, x0, method='trust-constr', constraints=nonlinear_constrain
 
 
 # check if we have a feasible solution 
-c = constraints_edl_system(res.x,edl_system,planet,mission_events,tmax,experiment,
-                           end_event,min_strength,max_rover_velocity,max_cost,
+c = constraints_edl_system(res.x, edl_system, planet, mission_events, tmax, experiment,
+                           end_event, min_strength, max_rover_velocity, max_cost,
                            max_batt_energy_per_meter)
 feasible = True
 if c[0] > 1e-15:
@@ -183,6 +209,16 @@ elif res.x[3] <= 0.05 or res.x[3] >= 0.12:
 elif res.x[4] <= 100 or res.x[4] >= 290:
     print('Fuel mass bounds exceeded')
     feasible = False
+
+
+error_type = ['constraint distance', 'constraint strength', 'constraint velocity', 'constraint cost', 'constraint battery']
+for i in range(len(c)):
+    if c[i] > 0:
+        print('Error:', error_type[i])
+
+feasible = np.max(c - np.zeros(len(c))) <= 0
+
+
 
 if feasible:
     xbest = res.x

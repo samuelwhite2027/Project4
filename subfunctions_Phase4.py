@@ -1785,7 +1785,7 @@ def constraints_edl_system(x,edl_system,planet,mission_events,tmax,experiment,en
     # *****************
     # CONSTRUCT THE CONSTRAINT LIST
     # **
-    c=[constraint_distance, constraint_strength, constraint_velocity, constraint_cost, constraint_battery]
+    c = [constraint_distance, constraint_strength, constraint_velocity, constraint_cost, constraint_battery]
     
     return np.array(c)
 
