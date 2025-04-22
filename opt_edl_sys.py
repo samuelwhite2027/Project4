@@ -152,16 +152,58 @@ res = minimize(obj_f, x0, method='trust-constr', constraints=nonlinear_constrain
 c = constraints_edl_system(res.x,edl_system,planet,mission_events,tmax,experiment,
                            end_event,min_strength,max_rover_velocity,max_cost,
                            max_batt_energy_per_meter)
+feasible = True
 
-feasible = np.max(c - np.zeros(len(c))) <= 0
+if res.x[4] < 100 * 0.999999 or res.x[4] > 290 * 1.000001:
+    print('Fuel mass bounds exceeded')
+    feasible = False
+elif res.x[3] < 0.05 * 0.999999 or res.x[3] > 0.12 * 1.000001:
+    print('Gear diameter bounds exceeded')
+    feasible = False
+elif res.x[2] < 250 * 0.999999 or res.x[2] > 800 * 1.000001:
+    print('Chassis mass bounds exceeded')
+    feasible = False
+elif res.x[1] < 0.2 * 0.999999 or res.x[1] > 0.7 * 1.000001:
+    print('Wheel radius bounds exceeded')
+    feasible = False
+elif res.x[0] < 14 * 0.999999 or res.x[0] > 19 * 1.000001:
+    print('Parachute bounds exceeded')
+    feasible = False
+elif c[0] > 1e-15:
+    print('Distance constraint not met')
+    feasible = False
+elif c[1] > 0:
+    print('Strength constraint not met')
+    feasible = False
+elif c[2] > 0:
+    print('Velocity constraint violated')
+    feasible = False
+elif c[3] > 0:
+    print('Cost constraint violated')
+    feasible = False
+elif c[4] > 0:
+    print('Battery constraint not met')
+    feasible = False
+
+# Store or exit based on feasibility
 if feasible:
     xbest = res.x
     fbest = res.fun
-else:  # nonsense to let us know this did not work
+else:
     xbest = [99999, 99999, 99999, 99999, 99999]
     fval = [99999]
     raise Exception('Solution not feasible, exiting code...')
     sys.exit()
+
+#feasible = np.max(c - np.zeros(len(c))) <= 0
+#if feasible:
+#    xbest = res.x
+#    fbest = res.fun
+#else:  # nonsense to let us know this did not work
+#    xbest = [99999, 99999, 99999, 99999, 99999]
+#    fval = [99999]
+#    raise Exception('Solution not feasible, exiting code...')
+#    sys.exit()
 
 # What about the design variable bounds?
 
