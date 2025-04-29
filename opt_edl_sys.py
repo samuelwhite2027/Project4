@@ -15,25 +15,15 @@ from scipy.optimize import NonlinearConstraint
 import pickle
 import sys
 
-# the following variables are the variables that can be changed
-PARACHUTE_DIAMETER = 17  # [14, 19]
-FUEL_MASS = 200  # [100, 290]
-WHEEL_RADIUS = .5  # [.2, .7]
-GEAR_DIAMETER = .05  # [.05, .12]
-CHASSIS_MASS = 300  # [250, 800]
-CHASSIS_TYPE = 'steel'  # ['steel', 'magnesium', 'carbon']
-MOTOR_TYPE = 'speed_he'  # ['base', 'base_he', torque', 'torque_he', 'speed', 'speed_he']
-BATTERY_TYPE = 'LiFePO4'  # ['LiFePO4', 'NiMH', 'NiCD', 'Pb-Acid-1', 'Pb-Acid-2', 'Pb-Acid-3']
-NUM_MODULES = 8
-
 # the following calls instantiate the needed structs and also make some of
 # our design selections (battery type, etc.)
 planet = define_planet()
 edl_system = define_edl_system()
 mission_events = define_mission_events()
-edl_system = define_chassis(edl_system,CHASSIS_TYPE)
-edl_system = define_motor(edl_system,MOTOR_TYPE)
-edl_system = define_batt_pack(edl_system,BATTERY_TYPE, NUM_MODULES)
+edl_system = define_chassis(edl_system,'steel')
+edl_system = define_motor(edl_system,'torque')    # stronger wheel torque
+edl_system = define_batt_pack(edl_system,'PbAcid-3', 10)
+
 tmax = 5000
 
 # Overrides what might be in the loaded data to establish our desired
@@ -64,28 +54,13 @@ max_batt_energy_per_meter = edl_system['rover']['power_subsys']['battery']['capa
 #   - rocket fuel mass [kg]
 #
 
-# create code to access each of these and redefine them
-# parachute diameter
-edl_system['parachute']['diameter'] = PARACHUTE_DIAMETER
-# fuel mass
-edl_system['rocket']['fuel_mass'] = FUEL_MASS
-# wheel radius
-edl_system['rover']['wheel_assembly']['wheel']['radius'] = WHEEL_RADIUS
-# gear diameter
-edl_system['rover']['wheel_assembly']['speed_reducer']['diam_gear'] = GEAR_DIAMETER
-# chassis mass
-edl_system['rover']['chassis']['mass'] = CHASSIS_MASS
-# the
-
-# end optimization problem definition
-# ******************************
 # search bounds
 #x_lb = np.array([14, 0.2, 250, 0.05, 100])
 #x_ub = np.array([19, 0.7, 800, 0.12, 290])
 bounds = Bounds([14, 0.2, 250, 0.05, 100], [19, 0.7, 800, 0.12, 290])
 
 # initial guess
-x0 = np.array([19, .7, 550.0, 0.09, 250.0]) 
+x0 = np.array([19.0, 0.50, 450.0, 0.05, 240.0])
 
 # lambda for the objective function
 obj_f = lambda x: obj_fun_time(x,edl_system,planet,mission_events,tmax,
@@ -97,6 +72,10 @@ obj_f = lambda x: obj_fun_time(x,edl_system,planet,mission_events,tmax,
 cons_f = lambda x: constraints_edl_system(x,edl_system,planet,mission_events,
                                           tmax,experiment,end_event,min_strength,
                                           max_rover_velocity,max_cost,max_batt_energy_per_meter)
+
+print('\nInitial x0  :', x0)
+print('c(x0)      :', cons_f(x0))
+print('order      : [distance, strength, touchdown-v, cost, battery] (<=0 OK)\n')
 
 nonlinear_constraint = NonlinearConstraint(cons_f, -np.inf, 0)  # for trust-constr
 ineq_cons = {'type' : 'ineq',
@@ -126,13 +105,17 @@ def callbackF(Xi):  # this is for SLSQP reporting during optimization
 
 ###############################################################################
 #call the trust-constr optimizer --------------------------------------------#
-options = {'maxiter': 5, 
+options = {'maxiter': 30, 
             # 'initial_constr_penalty' : 5.0,
             # 'initial_barrier_parameter' : 1.0,
             'verbose' : 3,
             'disp' : True}
 res = minimize(obj_f, x0, method='trust-constr', constraints=nonlinear_constraint, 
                 options=options, bounds=bounds)
+
+print('\nSolution x :', res.x)
+print('c(final)   :', cons_f(res.x))
+
 # end call to the trust-constr optimizer -------------------------------------#
 ###############################################################################
 
@@ -175,51 +158,11 @@ res = minimize(obj_f, x0, method='trust-constr', constraints=nonlinear_constrain
 
 
 # check if we have a feasible solution 
-c = constraints_edl_system(res.x, edl_system, planet, mission_events, tmax, experiment,
-                           end_event, min_strength, max_rover_velocity, max_cost,
+c = constraints_edl_system(res.x,edl_system,planet,mission_events,tmax,experiment,
+                           end_event,min_strength,max_rover_velocity,max_cost,
                            max_batt_energy_per_meter)
-feasible = True
-if c[0] > 1e-15:
-    print('Distance constraint not met')
-    feasible = False
-elif c[1] > 0:
-    print('Strength constraint not met')
-    feasible = False
-elif c[2] > 0:
-    print('Velocity constraint violated')
-    feasible = False
-elif c[3] > 0:
-    print('Cost constraint violated')
-    feasible = False
-elif c[4] > 0:
-    print('Battery constraint not met')
-    feasible = False
-elif res.x[0] <= 14 or res.x[0] >= 19:
-    print('Parachute bounds exceeded')
-    feasible = False
-elif res.x[1] <= 0.2 or res.x[1] >= 0.7:
-    print('Wheel radius bounds exceeded')
-    feasible = False
-elif res.x[2] <= 250 or res.x[2] >= 800:
-    print('Chassis mass bounds exceeded')
-    feasible = False
-elif res.x[3] <= 0.05 or res.x[3] >= 0.12:
-    print('Gear diameter bounds exceeded')
-    feasible = False
-elif res.x[4] <= 100 or res.x[4] >= 290:
-    print('Fuel mass bounds exceeded')
-    feasible = False
-
-
-error_type = ['constraint distance', 'constraint strength', 'constraint velocity', 'constraint cost', 'constraint battery']
-for i in range(len(c)):
-    if c[i] > 0:
-        print('Error:', error_type[i])
 
 feasible = np.max(c - np.zeros(len(c))) <= 0
-
-
-
 if feasible:
     xbest = res.x
     fbest = res.fun
@@ -228,20 +171,6 @@ else:  # nonsense to let us know this did not work
     fval = [99999]
     raise Exception('Solution not feasible, exiting code...')
     sys.exit()
-
-
-#feasible = np.max(c - np.zeros(len(c))) <= 0
-#if feasible:
-
-#feasible = np.max(c - np.zeros(len(c))) <= 0
-#if feasible:
-#    xbest = res.x
-#    fbest = res.fun
-#else:  # nonsense to let us know this did not work
-#    xbest = [99999, 99999, 99999, 99999, 99999]
-#    fval = [99999]
-#    raise Exception('Solution not feasible, exiting code...')
-#    sys.exit()
 
 # What about the design variable bounds?
 
